@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Dino</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        #game-container {
+            width: 800px;
+            height: 200px;
+            border: 1px solid black;
+            position: relative;
+            overflow: hidden;
+            background-color: white;
+        }
+        #dino {
+            width: 40px;
+            height: 40px;
+            background-color: #333;
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .obstacle {
+            position: absolute;
+        }
+        .ground-obstacle {
+            width: 15px;
+            height: 40px;
+            background-color: red;
+            bottom: 0;
+        }
+        .air-obstacle {
+            width: 20px;
+            height: 30px;
+            background-color: blue;
+            bottom: 35px; /* 修改这里,使空中障碍物离地面更近 */
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+        }
+        #background {
+            position: absolute;
+            width: 1600px;
+            height: 200px;
+            background: linear-gradient(to bottom, #87CEEB, #E0F6FF);
+        }
+        #game-over {
+            position: fixed; /* 改为fixed定位 */
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 1000;
+            display: none;
+        }
+        #restart-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        #high-score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+        }
+        #start-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 1000;
+        }
+        #start-btn, #restart-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        #difficulty-select {
+            margin-top: 20px;
+        }
+        
+        #difficulty-select button {
+            margin: 0 10px;
+            padding: 5px 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Simple Dino</h1>
+    <div id="game-container">
+        <div id="background"></div>
+        <div id="dino"></div>
+        <div id="score">得分: 0</div>
+        <div id="high-score">最高分: 0</div>
+    </div>
+    <div id="start-screen">
+        <h2>Simple Dino</h2>
+        <p>按空格键跳跃，Shift键下蹲</p>
+        <div id="difficulty-select">
+            <button id="easy-btn">简单</button>
+            <button id="medium-btn">中等</button>
+            <button id="hard-btn">困难</button>
+        </div>
+    </div>
+    <div id="game-over">
+        <h2>游戏结束</h2>
+        <p id="final-score"></p>
+        <button id="restart-btn">重新开始</button>
+    </div>
+
+    <script>
+        const gameContainer = document.getElementById('game-container');
+        const dino = document.getElementById('dino');
+        const scoreDisplay = document.getElementById('score');
+        const background = document.getElementById('background');
+        let isJumping = false;
+        let isCrouching = false;
+        let score = 0;
+        let gameSpeed = 5;
+        let backgroundPosition = 0;
+
+        let lastObstacleTime = 0;
+        const minObstacleInterval = 1000; // 障碍物之间的最小时间间隔（毫秒）
+
+        let highScore = 0;
+        const gameOverScreen = document.getElementById('game-over');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const restartBtn = document.getElementById('restart-btn');
+        const highScoreDisplay = document.getElementById('high-score');
+
+        let isGameOver = false;
+
+        const startScreen = document.getElementById('start-screen');
+        const startBtn = document.getElementById('start-btn');
+
+        let isGameStarted = false;
+
+        const easyBtn = document.getElementById('easy-btn');
+        const mediumBtn = document.getElementById('medium-btn');
+        const hardBtn = document.getElementById('hard-btn');
+
+        let difficultyMultiplier = 1;
+
+        let jumpSpeed = 5; // 默认跳跃速度
+
+        let obstacleFrequency = 0.02; // 默认障碍物出现频率
+
+        // 修改跳跃函数
+        function jump() {
+            if (!isJumping) {
+                isJumping = true;
+                let jumpCount = 0;
+                const jumpInterval = setInterval(() => {
+                    if (jumpCount < 15) {
+                        dino.style.bottom = (parseInt(dino.style.bottom) || 0) + jumpSpeed + 'px';
+                    } else if (jumpCount < 30) {
+                        dino.style.bottom = (parseInt(dino.style.bottom) || 0) - jumpSpeed + 'px';
+                    } else {
+                        clearInterval(jumpInterval);
+                        isJumping = false;
+                        dino.style.bottom = '0px';
+                    }
+                    jumpCount++;
+                }, 20);
+            }
+        }
+
+        // 下蹲函数
+        function crouch() {
+            if (!isCrouching) {
+                isCrouching = true;
+                dino.style.height = '20px';
+                dino.style.bottom = '0px';
+            }
+        }
+
+        // 恢复站立
+        function stand() {
+            isCrouching = false;
+            dino.style.height = '40px';
+        }
+
+        // 创建障碍物
+        function createObstacle() {
+            const currentTime = Date.now();
+            if (currentTime - lastObstacleTime < minObstacleInterval / difficultyMultiplier) {
+                return;
+            }
+
+            const obstacle = document.createElement('div');
+            obstacle.classList.add('obstacle');
+            
+            // 根据上一个障碍物的类型决定新障碍物的类型
+            const existingObstacles = document.querySelectorAll('.obstacle');
+            const lastObstacle = existingObstacles[existingObstacles.length - 1];
+            
+            if (!lastObstacle || lastObstacle.classList.contains('ground-obstacle')) {
+                obstacle.classList.add('air-obstacle');
+                // 随机调整空中障碍物的高度,使其更具变化性
+                const randomHeight = Math.floor(Math.random() * 15) + 25; // 25到39之间的随机数
+                obstacle.style.bottom = `${randomHeight}px`;
+            } else {
+                obstacle.classList.add('ground-obstacle');
+            }
+
+            gameContainer.appendChild(obstacle);
+            lastObstacleTime = currentTime;
+
+            let obstaclePosition = 800;
+            const moveObstacle = setInterval(() => {
+                if (isGameOver) {
+                    clearInterval(moveObstacle);
+                    return;
+                }
+                if (obstaclePosition < -50) {
+                    clearInterval(moveObstacle);
+                    obstacle.remove();
+                    score++;
+                    scoreDisplay.textContent = `得分: ${score}`;
+                } else {
+                    obstaclePosition -= gameSpeed;
+                    obstacle.style.left = obstaclePosition + 'px';
+
+                    // 碰撞检测
+                    const dinoRect = dino.getBoundingClientRect();
+                    const obstacleRect = obstacle.getBoundingClientRect();
+                    if (
+                        dinoRect.right > obstacleRect.left &&
+                        dinoRect.left < obstacleRect.right &&
+                        dinoRect.bottom > obstacleRect.top &&
+                        dinoRect.top < obstacleRect.bottom
+                    ) {
+                        clearInterval(moveObstacle);
+                        endGame();
+                    }
+                }
+            }, 20);
+        }
+
+        // 移动背景
+        function moveBackground() {
+            if (isGameOver) return;
+            backgroundPosition -= gameSpeed;
+            if (backgroundPosition <= -800) {
+                backgroundPosition = 0;
+            }
+            background.style.left = backgroundPosition + 'px';
+        }
+
+        // 游戏主循环
+        function gameLoop() {
+            if (isGameStarted && !isGameOver) {
+                moveBackground();
+                if (Math.random() < obstacleFrequency) {
+                    createObstacle();
+                }
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // 结束游戏
+        function endGame() {
+            isGameOver = true;
+            gameOverScreen.style.display = 'flex';
+            finalScoreDisplay.textContent = `你的得分是: ${score}`;
+            if (score > highScore) {
+                highScore = score;
+                highScoreDisplay.textContent = `最高分: ${highScore}`;
+            }
+        }
+
+        // 修改开始游戏函数
+        function startGame(difficulty) {
+            isGameStarted = true;
+            startScreen.style.display = 'none';
+            
+            switch(difficulty) {
+                case 'easy':
+                    difficultyMultiplier = 1;
+                    jumpSpeed = 6; // 稍快的起跳速度
+                    obstacleFrequency = 0.02; // 保持原有频率
+                    break;
+                case 'medium':
+                    difficultyMultiplier = 1.5;
+                    jumpSpeed = 5; // 保持原有的起跳速度
+                    obstacleFrequency = 0.025; // 稍微增加频率
+                    break;
+                case 'hard':
+                    difficultyMultiplier = 2;
+                    jumpSpeed = 4; // 稍慢的起跳速度
+                    obstacleFrequency = 0.03; // 显著增加频率
+                    break;
+            }
+            
+            gameSpeed = 5 * difficultyMultiplier;
+            gameLoop();
+        }
+
+        // 修改重新开始函数
+        function restartGame() {
+            isGameOver = false;
+            score = 0;
+            gameSpeed = 5 * difficultyMultiplier;
+            // 保持当前难度的跳跃速度和障碍物频率
+            scoreDisplay.textContent = '得分: 0';
+            gameOverScreen.style.display = 'none';
+            
+            // 清除所有障碍物
+            document.querySelectorAll('.obstacle').forEach(obstacle => obstacle.remove());
+            
+            // 重置恐龙位置
+            dino.style.bottom = '0px';
+            dino.style.height = '40px';
+            
+            gameLoop();
+        }
+
+        // 修改键盘事件监听
+        document.addEventListener('keydown', (event) => {
+            if (isGameStarted && !isGameOver) {
+                if (event.code === 'Space') {
+                    jump();
+                    event.preventDefault();
+                } else if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+                    crouch();
+                    event.preventDefault();
+                }
+            } else if (event.code === 'Space') {
+                if (!isGameStarted) {
+                    startGame();
+                } else {
+                    restartGame();
+                }
+                event.preventDefault();
+            }
+        });
+
+        // 保留原有的keyup事件监听
+        document.addEventListener('keyup', (event) => {
+            if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+                stand();
+            }
+        });
+
+        // 添加难度选择按钮事件监听
+        easyBtn.addEventListener('click', () => startGame('easy'));
+        mediumBtn.addEventListener('click', () => startGame('medium'));
+        hardBtn.addEventListener('click', () => startGame('hard'));
+
+        // 移除开始按钮点击事件
+        // startBtn.addEventListener('click', startGame);
+
+        // 添加重新开始按钮点击事件
+        restartBtn.addEventListener('click', restartGame);
+
+        // 不再自动开始游戏
+        // gameLoop();
+    </script>
+</body>
+</html>
